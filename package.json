@@ -1,6 +1,6 @@
 {
   "name": "codehealth",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Framework-aware React code scanner with precise diagnostics and copy-paste fix snippets",
   "bin": {
     "codehealth": "./dist/cli.js"
@@ -23,7 +23,7 @@
     "static-analysis",
     "diagnostics"
   ],
-  "author": "",
+  "author": "Esra",
   "license": "MIT",
   "dependencies": {
     "@typescript-eslint/typescript-estree": "^8.0.0",

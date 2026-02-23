@@ -3,7 +3,7 @@ import type { Diagnostic, Framework, Category } from './rules/types';
 import type { ScoreResult } from './scorer';
 import { FRAMEWORK_LABELS } from './profiles';
 
-const VERSION = '0.2.2';
+const VERSION = '1.0.0';
 
 const AUTO_GROUP_THRESHOLD = 20;
 const MAX_LOCATIONS_SHOWN = 5;

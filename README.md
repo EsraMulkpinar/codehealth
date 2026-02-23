@@ -243,6 +243,3 @@ type Framework = 'react' | 'next' | 'react-native' | 'expo';
 
 ---
 
-## License
-
-MIT

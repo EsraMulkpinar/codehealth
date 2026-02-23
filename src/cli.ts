@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('codehealth')
   .description('React code scanner with framework-aware diagnostics and fix snippets')
-  .version('0.2.2')
+  .version('1.0.0')
   .argument('[path]', 'Path to scan (directory or file)', '.')
   .option('--react',         'Scan as a React project (CRA, Vite, etc.)')
   .option('--next',          'Scan as a Next.js project (App Router / Pages)')

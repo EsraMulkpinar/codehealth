@@ -1582,7 +1582,7 @@ async function scanFile(filePath, framework, ruleId) {
 
 // src/reporter.ts
 var import_picocolors = __toESM(require("picocolors"));
-var VERSION = "0.2.2";
+var VERSION = "1.0.0";
 var AUTO_GROUP_THRESHOLD = 20;
 var MAX_LOCATIONS_SHOWN = 5;
 function stripAnsi(str) {
@@ -2089,7 +2089,7 @@ async function promptFramework() {
 
 // src/cli.ts
 var program = new import_commander.Command();
-program.name("codehealth").description("React code scanner with framework-aware diagnostics and fix snippets").version("0.2.2").argument("[path]", "Path to scan (directory or file)", ".").option("--react", "Scan as a React project (CRA, Vite, etc.)").option("--next", "Scan as a Next.js project (App Router / Pages)").option("--react-native", "Scan as a React Native project").option("--expo", "Scan as an Expo project").option("-w, --watch", "Watch mode \u2014 re-scan on file changes").option("-r, --rule <ruleId>", "Run only a specific rule").option("--ignore <pattern>", "Glob pattern to ignore (can be repeated)", collect, []).option("--list-rules", "List all available rules (optionally filtered by framework flag)").option("--max-issues <n>", "Show only first N issues (0 = all)", "0").option("--compact", "Show file headers only, no code snippets or fix details").option("--ai-prompt", "Output a plain-text AI prompt for refactoring assistance").action(async (targetPath, options) => {
+program.name("codehealth").description("React code scanner with framework-aware diagnostics and fix snippets").version("1.0.0").argument("[path]", "Path to scan (directory or file)", ".").option("--react", "Scan as a React project (CRA, Vite, etc.)").option("--next", "Scan as a Next.js project (App Router / Pages)").option("--react-native", "Scan as a React Native project").option("--expo", "Scan as an Expo project").option("-w, --watch", "Watch mode \u2014 re-scan on file changes").option("-r, --rule <ruleId>", "Run only a specific rule").option("--ignore <pattern>", "Glob pattern to ignore (can be repeated)", collect, []).option("--list-rules", "List all available rules (optionally filtered by framework flag)").option("--max-issues <n>", "Show only first N issues (0 = all)", "0").option("--compact", "Show file headers only, no code snippets or fix details").option("--ai-prompt", "Output a plain-text AI prompt for refactoring assistance").action(async (targetPath, options) => {
   let framework;
   if (options.react) framework = "react";
   else if (options.next) framework = "next";
