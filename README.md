@@ -45,7 +45,7 @@ npm install -g codehealth
 Or run without installing:
 
 ```bash
-npx codehealth . --next
+npx codehealth .
 ```
 
 ---
