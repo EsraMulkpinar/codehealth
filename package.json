@@ -1,0 +1,40 @@
+{
+  "name": "codehealth",
+  "version": "0.2.0",
+  "description": "Framework-aware React code scanner with precise diagnostics and copy-paste fix snippets",
+  "bin": {
+    "codehealth": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "react",
+    "lint",
+    "scanner",
+    "cli",
+    "static-analysis",
+    "diagnostics"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@typescript-eslint/typescript-estree": "^8.0.0",
+    "chokidar": "^4.0.0",
+    "commander": "^12.0.0",
+    "fast-glob": "^3.0.0",
+    "picocolors": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}
