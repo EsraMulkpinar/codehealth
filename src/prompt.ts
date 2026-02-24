@@ -3,6 +3,77 @@ import pc from 'picocolors';
 import type { Framework } from './rules/types';
 import { FRAMEWORK_LABELS, FRAMEWORK_DESCRIPTIONS } from './profiles';
 
+type NextAction = 'overview' | 'fixes' | 'ai-prompt' | 'skip';
+
+const NEXT_ACTIONS: { value: NextAction; label: string }[] = [
+  { value: 'overview',  label: 'Overview & score'    },
+  { value: 'fixes',     label: 'Detailed fixes'      },
+  { value: 'ai-prompt', label: 'AI refactoring view' },
+  { value: 'skip',      label: 'Exit'                },
+];
+
+export async function promptNextAction(): Promise<NextAction> {
+  const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+  if (!isTTY) return 'skip';
+
+  let selected = 0;
+
+  function renderMenu(): void {
+    process.stdout.write(
+      `  ${pc.bold('What would you like to do?')}  ${pc.dim('(↑↓ arrow keys, Enter to confirm)')}\n\n`
+    );
+    for (let i = 0; i < NEXT_ACTIONS.length; i++) {
+      const { label } = NEXT_ACTIONS[i];
+      const isActive = i === selected;
+      const cursor = isActive ? pc.cyan('❯') : ' ';
+      const text = isActive ? pc.cyan(pc.bold(label)) : label;
+      process.stdout.write(`  ${cursor} ${text}\n`);
+    }
+  }
+
+  function clearMenu(): void {
+    const lines = NEXT_ACTIONS.length + 2;
+    for (let i = 0; i < lines; i++) {
+      process.stdout.write('\x1B[1A\x1B[2K');
+    }
+  }
+
+  return new Promise((resolve) => {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+
+    process.stdout.write('\n');
+    renderMenu();
+
+    function onKey(_: unknown, key: { name: string; ctrl: boolean } | null): void {
+      if (!key) return;
+
+      if (key.name === 'up') {
+        selected = (selected - 1 + NEXT_ACTIONS.length) % NEXT_ACTIONS.length;
+        clearMenu();
+        renderMenu();
+      } else if (key.name === 'down') {
+        selected = (selected + 1) % NEXT_ACTIONS.length;
+        clearMenu();
+        renderMenu();
+      } else if (key.name === 'return') {
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener('keypress', onKey);
+        clearMenu();
+        const chosen = NEXT_ACTIONS[selected];
+        process.stdout.write(`\n  ${pc.green('✓')} ${pc.cyan(pc.bold(chosen.label))}\n\n`);
+        resolve(chosen.value);
+      } else if (key.ctrl && key.name === 'c') {
+        process.stdin.setRawMode(false);
+        process.stdout.write('\n');
+        process.exit(0);
+      }
+    }
+
+    process.stdin.on('keypress', onKey);
+  });
+}
+
 const FRAMEWORKS: Framework[] = ['react', 'next', 'react-native', 'expo'];
 
 export async function promptFramework(): Promise<Framework> {

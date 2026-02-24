@@ -3,13 +3,20 @@ import type { Diagnostic, Framework, Category } from './rules/types';
 import type { ScoreResult } from './scorer';
 import { FRAMEWORK_LABELS } from './profiles';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 const AUTO_GROUP_THRESHOLD = 20;
 const MAX_LOCATIONS_SHOWN = 5;
 
 function stripAnsi(str: string): string {
   return str.replace(/\x1B\[[0-9;]*m/g, '');
+}
+
+function scoreCat(score: number): string {
+  if (score >= 90) return '😸';
+  if (score >= 75) return '😺';
+  if (score >= 50) return '😾';
+  return '🙀';
 }
 
 function confidenceDots(confidence: number): string {
@@ -38,6 +45,12 @@ function groupByFile(diagnostics: Diagnostic[]): Map<string, Diagnostic[]> {
     map.get(d.filePath)!.push(d);
   }
   return map;
+}
+
+function toRelPath(filePath: string): string {
+  return filePath.includes('/src/')
+    ? filePath.substring(filePath.indexOf('/src/') + 1)
+    : filePath;
 }
 
 function groupByRule(diagnostics: Diagnostic[]): Map<string, Diagnostic[]> {
@@ -101,9 +114,7 @@ function printGroupedByRule(diagnostics: Diagnostic[]): void {
 
     const fileMap = new Map<string, number[]>();
     for (const d of reps) {
-      const relPath = d.filePath.includes('/src/')
-        ? d.filePath.substring(d.filePath.indexOf('/src/') + 1)
-        : d.filePath;
+      const relPath = toRelPath(d.filePath);
       if (!fileMap.has(relPath)) fileMap.set(relPath, []);
       fileMap.get(relPath)!.push(d.line);
     }
@@ -140,6 +151,20 @@ function printGroupedByRule(diagnostics: Diagnostic[]): void {
 
   console.log(pc.dim(`  Grouped view: ${diagnostics.length} issues across ${totalRules} rules.`));
   console.log('');
+}
+
+export function printCompactIssueList(diagnostics: Diagnostic[]): void {
+  const byRule = groupByRule(diagnostics);
+  for (const [, reps] of byRule) {
+    const rep = reps[0];
+    const icon = rep.severity === 'error' ? pc.red('✗') : pc.yellow('⚠');
+    const msg = normalizeMessage(rep.ruleId, rep.message);
+    const count = reps.length > 1 ? pc.dim(`(${reps.length})`) : '';
+    console.log(`  ${icon}  ${pc.bold(msg)}  ${count}`);
+    const fixHint = stripAnsi(rep.fix).split('\n').find((l) => l.trim()) ?? '';
+    console.log(`     ${pc.dim(fixHint)}`);
+    console.log('');
+  }
 }
 
 function buildAiPrompt(
@@ -187,19 +212,22 @@ function buildAiPrompt(
       out.push('**Affected locations:**');
       const fileMap = new Map<string, number[]>();
       for (const d of reps) {
-        const relPath = d.filePath.includes('/src/')
-          ? d.filePath.substring(d.filePath.indexOf('/src/') + 1)
-          : d.filePath;
+        const relPath = toRelPath(d.filePath);
         if (!fileMap.has(relPath)) fileMap.set(relPath, []);
         fileMap.get(relPath)!.push(d.line);
       }
-      for (const [fp, ls] of fileMap) {
+      const fileEntries = [...fileMap.entries()];
+      const shownEntries = fileEntries.slice(0, MAX_LOCATIONS_SHOWN);
+      for (const [fp, ls] of shownEntries) {
         const lineStr = ls.map((l) => `line ${l}`).join(', ');
         out.push(`- \`${fp}\` ${lineStr}`);
       }
+      if (fileEntries.length > MAX_LOCATIONS_SHOWN) {
+        out.push(`- _+ ${fileEntries.length - MAX_LOCATIONS_SHOWN} more files_`);
+      }
       out.push('');
 
-      if (rep.codeSnippet.length > 0) {
+      if (rep.codeSnippet.length > 0 && rep.severity === 'error') {
         out.push('**Code context (first occurrence):**');
         out.push('```tsx');
         for (const l of rep.codeSnippet) {
@@ -222,6 +250,9 @@ function buildAiPrompt(
         }
         out.push('');
       }
+
+      out.push('---');
+      out.push('');
     }
 
     return out;
@@ -244,12 +275,7 @@ function buildAiPrompt(
   lines.push('---');
   lines.push('');
   lines.push('## Instructions for AI');
-  lines.push('You are a senior React engineer reviewing the issues above. For each rule group, please:');
-  lines.push('1. Explain why the pattern is problematic in 1-2 sentences');
-  lines.push('2. Show a concrete refactored version of the first affected file');
-  lines.push('3. Note any edge cases or trade-offs');
-  lines.push('');
-  lines.push('Focus on errors first, then warnings. Keep explanations concise and actionable.');
+  lines.push('Review each rule group: explain why it is problematic, show a concrete fix from the first affected file.');
 
   return lines.join('\n');
 }
@@ -264,19 +290,6 @@ export function printAiPrompt(
   process.stdout.write(buildAiPrompt(diagnostics, framework, score, totalFiles, options) + '\n');
 }
 
-export function printAiPromptInline(
-  diagnostics: Diagnostic[],
-  framework: Framework | undefined,
-  score: ScoreResult,
-  totalFiles: number,
-  options?: { maxIssues?: number }
-): void {
-  console.log('');
-  console.log(pc.dim('─── AI Refactoring Prompt ' + '─'.repeat(35)));
-  console.log('');
-  process.stdout.write(buildAiPrompt(diagnostics, framework, score, totalFiles, options) + '\n');
-}
-
 export function printHeader(fileCount: number, framework?: Framework): void {
   const fwLabel = framework ? ` · ${FRAMEWORK_LABELS[framework]}` : '';
   console.log(
@@ -287,7 +300,7 @@ export function printHeader(fileCount: number, framework?: Framework): void {
   console.log('');
 }
 
-export function printDiagnostic(diag: Diagnostic): void {
+function printDiagnostic(diag: Diagnostic): void {
   const icon = diag.severity === 'error' ? pc.red('✗') : pc.yellow('⚠');
   const loc = pc.dim(`${diag.line}:${diag.column}`);
   const rule = pc.dim(diag.ruleId);
@@ -337,6 +350,10 @@ export function printDiagnostics(
 ): void {
   if (diagnostics.length === 0) return;
 
+  console.log('');
+  console.log(pc.bold(`  ${'─'.repeat(4)} Detailed fixes ${'─'.repeat(4)}`));
+  console.log('');
+
   const maxIssues = options?.maxIssues ?? 0;
   const compact = options?.compact ?? false;
 
@@ -356,9 +373,7 @@ export function printDiagnostics(
 
   for (const [filePath, fileDiags] of byFile) {
     const issueWord = fileDiags.length === 1 ? 'issue' : 'issues';
-    const relPath = filePath.includes('/src/')
-      ? filePath.substring(filePath.indexOf('/src/') + 1)
-      : filePath;
+    const relPath = toRelPath(filePath);
 
     const header = `  ${pc.cyan(relPath)}   ${pc.yellow(String(fileDiags.length))} ${issueWord}`;
     console.log(header);
@@ -447,4 +462,143 @@ export function printSummary(result: ScoreResult): void {
 
 export function printNoIssues(totalFiles: number): void {
   console.log(pc.green('✓') + ` No issues found in ${totalFiles} files.\n`);
+}
+
+export function printOverview(
+  diagnostics: Diagnostic[],
+  framework: Framework | undefined,
+  score: ScoreResult,
+): void {
+  const fwLabel = framework ? `  ${FRAMEWORK_LABELS[framework]}` : '';
+  console.log('');
+  console.log(`  ${pc.bold('codehealth')}${pc.dim(fwLabel)}  ${pc.dim('·')}  ${pc.dim(`${score.totalFiles} files scanned`)}`);
+  console.log('');
+
+  const categoryOrder: Category[] = ['correctness', 'performance', 'best-practice', 'accessibility'];
+  const byCat = new Map<Category, Diagnostic[]>();
+  for (const d of diagnostics) {
+    if (!byCat.has(d.category)) byCat.set(d.category, []);
+    byCat.get(d.category)!.push(d);
+  }
+
+  for (const cat of categoryOrder) {
+    const catDiags = byCat.get(cat);
+    if (!catDiags || catDiags.length === 0) continue;
+
+    const color = categoryColor(cat);
+    const countStr = String(catDiags.length);
+    const labelPart = `── ${cat} `;
+    const rightPart = ` ${countStr} ──`;
+    const LINE_WIDTH = 50;
+    const fillCount = Math.max(0, LINE_WIDTH - labelPart.length - rightPart.length);
+    console.log(`  ${color(labelPart)}${pc.dim('─'.repeat(fillCount) + rightPart)}`);
+
+    const byRule = groupByRule(catDiags);
+    for (const [ruleId, reps] of byRule) {
+      const icon = reps[0].severity === 'error' ? pc.red('✗') : pc.yellow('⚠');
+      const countCol = pc.dim(`${reps.length}×`);
+      const ruleCol = ruleId.padEnd(28);
+      console.log(`   ${icon}  ${ruleCol}  ${countCol}`);
+      const hint = stripAnsi(normalizeMessage(ruleId, reps[0].message));
+      const truncated = hint.length > 52 ? hint.slice(0, 49) + '...' : hint;
+      console.log(`      ${pc.dim(truncated)}`);
+    }
+    console.log('');
+  }
+
+  const { score: s, label, errors, warnings, totalFiles } = score;
+  let scoreColor: (x: string) => string;
+  if (s >= 90) scoreColor = pc.green;
+  else if (s >= 75) scoreColor = pc.cyan;
+  else if (s >= 60) scoreColor = pc.yellow;
+  else scoreColor = pc.red;
+
+  const sep = pc.dim('╌'.repeat(52));
+  const errPart = errors > 0 ? pc.red(`✗ ${errors}`) : pc.dim(`✗ 0`);
+  const warnPart = warnings > 0 ? pc.yellow(`⚠ ${warnings}`) : pc.dim(`⚠ 0`);
+
+  console.log(`  ${sep}`);
+  console.log(`    ${scoreColor(pc.bold(`${s} / 100`))}  ${pc.dim(label)}  ${scoreCat(s)}  ·  ${errPart}  ·  ${warnPart}  ·  ${pc.dim(`${totalFiles} files`)}`);
+  console.log(`  ${sep}`);
+  console.log('');
+}
+
+export function printAiPromptTerminal(
+  diagnostics: Diagnostic[],
+  _framework: Framework | undefined,
+  _score: ScoreResult,
+): void {
+  const BOX_INNER = 64;
+
+  console.log('');
+  console.log(pc.bold(`  ${'─'.repeat(4)} AI Refactoring ${'─'.repeat(4)}`));
+  console.log('');
+
+  const byCat = new Map<Category, Diagnostic[]>();
+  for (const d of diagnostics) {
+    if (!byCat.has(d.category)) byCat.set(d.category, []);
+    byCat.get(d.category)!.push(d);
+  }
+
+  const categoryOrder: Category[] = ['correctness', 'performance', 'best-practice', 'accessibility'];
+
+  for (const cat of categoryOrder) {
+    const catDiags = byCat.get(cat);
+    if (!catDiags || catDiags.length === 0) continue;
+
+    const color = categoryColor(cat);
+    const countStr = String(catDiags.length);
+
+    const leftPart = `══ ${cat} ══`;
+    const rightPart = ` ${countStr} ══`;
+    const fillCount = Math.max(0, BOX_INNER - leftPart.length - rightPart.length);
+
+    console.log(
+      `  ${pc.dim('╔══ ')}${color(cat)}${pc.dim(` ══${'═'.repeat(fillCount)} ${countStr} ══╗`)}`
+    );
+    console.log('');
+
+    const byRule = groupByRule(catDiags);
+
+    for (const [ruleId, reps] of byRule) {
+      const rep = reps[0];
+      const msg = normalizeMessage(ruleId, rep.message);
+
+      console.log(`   ${pc.bold(ruleId)}`);
+      console.log(`   ${msg}`);
+      console.log('');
+
+      const fileList: string[] = [];
+      const seen = new Set<string>();
+      for (const d of reps) {
+        const basename = d.filePath.split('/').pop() ?? d.filePath;
+        if (!seen.has(basename)) {
+          seen.add(basename);
+          fileList.push(basename);
+        }
+      }
+
+      const shownFiles = fileList.slice(0, 5);
+      const moreCount = fileList.length - shownFiles.length;
+      const filesStr = shownFiles.map((f) => pc.cyan(f)).join(pc.dim(' · '));
+      console.log(`   ${pc.dim('Files')}  ${filesStr}`);
+      if (moreCount > 0) {
+        console.log(`          ${pc.dim(`+${moreCount} more files`)}`);
+      }
+      console.log('');
+
+      const fixWidth = BOX_INNER - 2;
+      const fixLines = stripAnsi(rep.fix).split('\n');
+      console.log(`   ${pc.green('Fix')}`);
+      console.log(`   ${pc.green('┌' + '─'.repeat(fixWidth))}`);
+      for (const line of fixLines) {
+        console.log(`   ${pc.green('│')} ${line}`);
+      }
+      console.log(`   ${pc.green('└' + '─'.repeat(fixWidth))}`);
+      console.log('');
+    }
+
+    console.log(`  ${pc.dim('╚' + '═'.repeat(BOX_INNER) + '╝')}`);
+    console.log('');
+  }
 }

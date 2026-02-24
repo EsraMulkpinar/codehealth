@@ -1582,11 +1582,17 @@ async function scanFile(filePath, framework, ruleId) {
 
 // src/reporter.ts
 var import_picocolors = __toESM(require("picocolors"));
-var VERSION = "1.0.0";
+var VERSION = "1.1.0";
 var AUTO_GROUP_THRESHOLD = 20;
 var MAX_LOCATIONS_SHOWN = 5;
 function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*m/g, "");
+}
+function scoreCat(score) {
+  if (score >= 90) return "\u{1F638}";
+  if (score >= 75) return "\u{1F63A}";
+  if (score >= 50) return "\u{1F63E}";
+  return "\u{1F640}";
 }
 function confidenceDots(confidence) {
   const filled = Math.round(confidence * 5);
@@ -1615,6 +1621,9 @@ function groupByFile(diagnostics) {
     map.get(d.filePath).push(d);
   }
   return map;
+}
+function toRelPath(filePath) {
+  return filePath.includes("/src/") ? filePath.substring(filePath.indexOf("/src/") + 1) : filePath;
 }
 function groupByRule(diagnostics) {
   const map = /* @__PURE__ */ new Map();
@@ -1671,7 +1680,7 @@ function printGroupedByRule(diagnostics) {
     console.log("");
     const fileMap = /* @__PURE__ */ new Map();
     for (const d of reps) {
-      const relPath = d.filePath.includes("/src/") ? d.filePath.substring(d.filePath.indexOf("/src/") + 1) : d.filePath;
+      const relPath = toRelPath(d.filePath);
       if (!fileMap.has(relPath)) fileMap.set(relPath, []);
       fileMap.get(relPath).push(d.line);
     }
@@ -1703,6 +1712,19 @@ function printGroupedByRule(diagnostics) {
   }
   console.log(import_picocolors.default.dim(`  Grouped view: ${diagnostics.length} issues across ${totalRules} rules.`));
   console.log("");
+}
+function printCompactIssueList(diagnostics) {
+  const byRule = groupByRule(diagnostics);
+  for (const [, reps] of byRule) {
+    const rep = reps[0];
+    const icon = rep.severity === "error" ? import_picocolors.default.red("\u2717") : import_picocolors.default.yellow("\u26A0");
+    const msg = normalizeMessage(rep.ruleId, rep.message);
+    const count = reps.length > 1 ? import_picocolors.default.dim(`(${reps.length})`) : "";
+    console.log(`  ${icon}  ${import_picocolors.default.bold(msg)}  ${count}`);
+    const fixHint = stripAnsi(rep.fix).split("\n").find((l) => l.trim()) ?? "";
+    console.log(`     ${import_picocolors.default.dim(fixHint)}`);
+    console.log("");
+  }
 }
 function buildAiPrompt(diagnostics, framework, score, totalFiles, options) {
   const maxIssues = options?.maxIssues ?? 0;
@@ -1736,16 +1758,21 @@ function buildAiPrompt(diagnostics, framework, score, totalFiles, options) {
       out.push("**Affected locations:**");
       const fileMap = /* @__PURE__ */ new Map();
       for (const d of reps) {
-        const relPath = d.filePath.includes("/src/") ? d.filePath.substring(d.filePath.indexOf("/src/") + 1) : d.filePath;
+        const relPath = toRelPath(d.filePath);
         if (!fileMap.has(relPath)) fileMap.set(relPath, []);
         fileMap.get(relPath).push(d.line);
       }
-      for (const [fp, ls] of fileMap) {
+      const fileEntries = [...fileMap.entries()];
+      const shownEntries = fileEntries.slice(0, MAX_LOCATIONS_SHOWN);
+      for (const [fp, ls] of shownEntries) {
         const lineStr = ls.map((l) => `line ${l}`).join(", ");
         out.push(`- \`${fp}\` ${lineStr}`);
       }
+      if (fileEntries.length > MAX_LOCATIONS_SHOWN) {
+        out.push(`- _+ ${fileEntries.length - MAX_LOCATIONS_SHOWN} more files_`);
+      }
       out.push("");
-      if (rep.codeSnippet.length > 0) {
+      if (rep.codeSnippet.length > 0 && rep.severity === "error") {
         out.push("**Code context (first occurrence):**");
         out.push("```tsx");
         for (const l of rep.codeSnippet) {
@@ -1766,6 +1793,8 @@ function buildAiPrompt(diagnostics, framework, score, totalFiles, options) {
         }
         out.push("");
       }
+      out.push("---");
+      out.push("");
     }
     return out;
   }
@@ -1784,21 +1813,10 @@ function buildAiPrompt(diagnostics, framework, score, totalFiles, options) {
   lines.push("---");
   lines.push("");
   lines.push("## Instructions for AI");
-  lines.push("You are a senior React engineer reviewing the issues above. For each rule group, please:");
-  lines.push("1. Explain why the pattern is problematic in 1-2 sentences");
-  lines.push("2. Show a concrete refactored version of the first affected file");
-  lines.push("3. Note any edge cases or trade-offs");
-  lines.push("");
-  lines.push("Focus on errors first, then warnings. Keep explanations concise and actionable.");
+  lines.push("Review each rule group: explain why it is problematic, show a concrete fix from the first affected file.");
   return lines.join("\n");
 }
 function printAiPrompt(diagnostics, framework, score, totalFiles, options) {
-  process.stdout.write(buildAiPrompt(diagnostics, framework, score, totalFiles, options) + "\n");
-}
-function printAiPromptInline(diagnostics, framework, score, totalFiles, options) {
-  console.log("");
-  console.log(import_picocolors.default.dim("\u2500\u2500\u2500 AI Refactoring Prompt " + "\u2500".repeat(35)));
-  console.log("");
   process.stdout.write(buildAiPrompt(diagnostics, framework, score, totalFiles, options) + "\n");
 }
 function printHeader(fileCount, framework) {
@@ -1845,6 +1863,9 @@ function printCompactDiagnostic(diag) {
 }
 function printDiagnostics(diagnostics, framework, options) {
   if (diagnostics.length === 0) return;
+  console.log("");
+  console.log(import_picocolors.default.bold(`  ${"\u2500".repeat(4)} Detailed fixes ${"\u2500".repeat(4)}`));
+  console.log("");
   const maxIssues = options?.maxIssues ?? 0;
   const compact = options?.compact ?? false;
   const totalCount = diagnostics.length;
@@ -1860,7 +1881,7 @@ function printDiagnostics(diagnostics, framework, options) {
   const byFile = groupByFile(visible);
   for (const [filePath, fileDiags] of byFile) {
     const issueWord = fileDiags.length === 1 ? "issue" : "issues";
-    const relPath = filePath.includes("/src/") ? filePath.substring(filePath.indexOf("/src/") + 1) : filePath;
+    const relPath = toRelPath(filePath);
     const header = `  ${import_picocolors.default.cyan(relPath)}   ${import_picocolors.default.yellow(String(fileDiags.length))} ${issueWord}`;
     console.log(header);
     console.log("  " + import_picocolors.default.dim("\u2500".repeat(Math.max(60, stripAnsi(header).length - 2))));
@@ -1925,6 +1946,114 @@ function printSummary(result) {
 function printNoIssues(totalFiles) {
   console.log(import_picocolors.default.green("\u2713") + ` No issues found in ${totalFiles} files.
 `);
+}
+function printOverview(diagnostics, framework, score) {
+  const fwLabel = framework ? `  ${FRAMEWORK_LABELS[framework]}` : "";
+  console.log("");
+  console.log(`  ${import_picocolors.default.bold("codehealth")}${import_picocolors.default.dim(fwLabel)}  ${import_picocolors.default.dim("\xB7")}  ${import_picocolors.default.dim(`${score.totalFiles} files scanned`)}`);
+  console.log("");
+  const categoryOrder = ["correctness", "performance", "best-practice", "accessibility"];
+  const byCat = /* @__PURE__ */ new Map();
+  for (const d of diagnostics) {
+    if (!byCat.has(d.category)) byCat.set(d.category, []);
+    byCat.get(d.category).push(d);
+  }
+  for (const cat of categoryOrder) {
+    const catDiags = byCat.get(cat);
+    if (!catDiags || catDiags.length === 0) continue;
+    const color = categoryColor(cat);
+    const countStr = String(catDiags.length);
+    const labelPart = `\u2500\u2500 ${cat} `;
+    const rightPart = ` ${countStr} \u2500\u2500`;
+    const LINE_WIDTH = 50;
+    const fillCount = Math.max(0, LINE_WIDTH - labelPart.length - rightPart.length);
+    console.log(`  ${color(labelPart)}${import_picocolors.default.dim("\u2500".repeat(fillCount) + rightPart)}`);
+    const byRule = groupByRule(catDiags);
+    for (const [ruleId, reps] of byRule) {
+      const icon = reps[0].severity === "error" ? import_picocolors.default.red("\u2717") : import_picocolors.default.yellow("\u26A0");
+      const countCol = import_picocolors.default.dim(`${reps.length}\xD7`);
+      const ruleCol = ruleId.padEnd(28);
+      console.log(`   ${icon}  ${ruleCol}  ${countCol}`);
+      const hint = stripAnsi(normalizeMessage(ruleId, reps[0].message));
+      const truncated = hint.length > 52 ? hint.slice(0, 49) + "..." : hint;
+      console.log(`      ${import_picocolors.default.dim(truncated)}`);
+    }
+    console.log("");
+  }
+  const { score: s, label, errors, warnings, totalFiles } = score;
+  let scoreColor;
+  if (s >= 90) scoreColor = import_picocolors.default.green;
+  else if (s >= 75) scoreColor = import_picocolors.default.cyan;
+  else if (s >= 60) scoreColor = import_picocolors.default.yellow;
+  else scoreColor = import_picocolors.default.red;
+  const sep = import_picocolors.default.dim("\u254C".repeat(52));
+  const errPart = errors > 0 ? import_picocolors.default.red(`\u2717 ${errors}`) : import_picocolors.default.dim(`\u2717 0`);
+  const warnPart = warnings > 0 ? import_picocolors.default.yellow(`\u26A0 ${warnings}`) : import_picocolors.default.dim(`\u26A0 0`);
+  console.log(`  ${sep}`);
+  console.log(`    ${scoreColor(import_picocolors.default.bold(`${s} / 100`))}  ${import_picocolors.default.dim(label)}  ${scoreCat(s)}  \xB7  ${errPart}  \xB7  ${warnPart}  \xB7  ${import_picocolors.default.dim(`${totalFiles} files`)}`);
+  console.log(`  ${sep}`);
+  console.log("");
+}
+function printAiPromptTerminal(diagnostics, _framework, _score) {
+  const BOX_INNER = 64;
+  console.log("");
+  console.log(import_picocolors.default.bold(`  ${"\u2500".repeat(4)} AI Refactoring ${"\u2500".repeat(4)}`));
+  console.log("");
+  const byCat = /* @__PURE__ */ new Map();
+  for (const d of diagnostics) {
+    if (!byCat.has(d.category)) byCat.set(d.category, []);
+    byCat.get(d.category).push(d);
+  }
+  const categoryOrder = ["correctness", "performance", "best-practice", "accessibility"];
+  for (const cat of categoryOrder) {
+    const catDiags = byCat.get(cat);
+    if (!catDiags || catDiags.length === 0) continue;
+    const color = categoryColor(cat);
+    const countStr = String(catDiags.length);
+    const leftPart = `\u2550\u2550 ${cat} \u2550\u2550`;
+    const rightPart = ` ${countStr} \u2550\u2550`;
+    const fillCount = Math.max(0, BOX_INNER - leftPart.length - rightPart.length);
+    console.log(
+      `  ${import_picocolors.default.dim("\u2554\u2550\u2550 ")}${color(cat)}${import_picocolors.default.dim(` \u2550\u2550${"\u2550".repeat(fillCount)} ${countStr} \u2550\u2550\u2557`)}`
+    );
+    console.log("");
+    const byRule = groupByRule(catDiags);
+    for (const [ruleId, reps] of byRule) {
+      const rep = reps[0];
+      const msg = normalizeMessage(ruleId, rep.message);
+      console.log(`   ${import_picocolors.default.bold(ruleId)}`);
+      console.log(`   ${msg}`);
+      console.log("");
+      const fileList = [];
+      const seen = /* @__PURE__ */ new Set();
+      for (const d of reps) {
+        const basename = d.filePath.split("/").pop() ?? d.filePath;
+        if (!seen.has(basename)) {
+          seen.add(basename);
+          fileList.push(basename);
+        }
+      }
+      const shownFiles = fileList.slice(0, 5);
+      const moreCount = fileList.length - shownFiles.length;
+      const filesStr = shownFiles.map((f) => import_picocolors.default.cyan(f)).join(import_picocolors.default.dim(" \xB7 "));
+      console.log(`   ${import_picocolors.default.dim("Files")}  ${filesStr}`);
+      if (moreCount > 0) {
+        console.log(`          ${import_picocolors.default.dim(`+${moreCount} more files`)}`);
+      }
+      console.log("");
+      const fixWidth = BOX_INNER - 2;
+      const fixLines = stripAnsi(rep.fix).split("\n");
+      console.log(`   ${import_picocolors.default.green("Fix")}`);
+      console.log(`   ${import_picocolors.default.green("\u250C" + "\u2500".repeat(fixWidth))}`);
+      for (const line of fixLines) {
+        console.log(`   ${import_picocolors.default.green("\u2502")} ${line}`);
+      }
+      console.log(`   ${import_picocolors.default.green("\u2514" + "\u2500".repeat(fixWidth))}`);
+      console.log("");
+    }
+    console.log(`  ${import_picocolors.default.dim("\u255A" + "\u2550".repeat(BOX_INNER) + "\u255D")}`);
+    console.log("");
+  }
 }
 
 // src/scorer.ts
@@ -2018,6 +2147,71 @@ function dim(s) {
 // src/prompt.ts
 var readline = __toESM(require("readline"));
 var import_picocolors2 = __toESM(require("picocolors"));
+var NEXT_ACTIONS = [
+  { value: "overview", label: "Overview & score" },
+  { value: "fixes", label: "Detailed fixes" },
+  { value: "ai-prompt", label: "AI refactoring view" },
+  { value: "skip", label: "Exit" }
+];
+async function promptNextAction() {
+  const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+  if (!isTTY) return "skip";
+  let selected = 0;
+  function renderMenu() {
+    process.stdout.write(
+      `  ${import_picocolors2.default.bold("What would you like to do?")}  ${import_picocolors2.default.dim("(\u2191\u2193 arrow keys, Enter to confirm)")}
+
+`
+    );
+    for (let i = 0; i < NEXT_ACTIONS.length; i++) {
+      const { label } = NEXT_ACTIONS[i];
+      const isActive = i === selected;
+      const cursor = isActive ? import_picocolors2.default.cyan("\u276F") : " ";
+      const text = isActive ? import_picocolors2.default.cyan(import_picocolors2.default.bold(label)) : label;
+      process.stdout.write(`  ${cursor} ${text}
+`);
+    }
+  }
+  function clearMenu() {
+    const lines = NEXT_ACTIONS.length + 2;
+    for (let i = 0; i < lines; i++) {
+      process.stdout.write("\x1B[1A\x1B[2K");
+    }
+  }
+  return new Promise((resolve4) => {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdout.write("\n");
+    renderMenu();
+    function onKey(_, key) {
+      if (!key) return;
+      if (key.name === "up") {
+        selected = (selected - 1 + NEXT_ACTIONS.length) % NEXT_ACTIONS.length;
+        clearMenu();
+        renderMenu();
+      } else if (key.name === "down") {
+        selected = (selected + 1) % NEXT_ACTIONS.length;
+        clearMenu();
+        renderMenu();
+      } else if (key.name === "return") {
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener("keypress", onKey);
+        clearMenu();
+        const chosen = NEXT_ACTIONS[selected];
+        process.stdout.write(`
+  ${import_picocolors2.default.green("\u2713")} ${import_picocolors2.default.cyan(import_picocolors2.default.bold(chosen.label))}
+
+`);
+        resolve4(chosen.value);
+      } else if (key.ctrl && key.name === "c") {
+        process.stdin.setRawMode(false);
+        process.stdout.write("\n");
+        process.exit(0);
+      }
+    }
+    process.stdin.on("keypress", onKey);
+  });
+}
 var FRAMEWORKS = ["react", "next", "react-native", "expo"];
 async function promptFramework() {
   let selected = 0;
@@ -2125,29 +2319,40 @@ ${header}
     ignore: options.ignore
   });
   const score = computeScore(diagnostics, totalFiles);
+  const maxIssues = parseInt(options.maxIssues, 10);
   if (options.aiPrompt) {
     if (diagnostics.length === 0) {
       console.log(`# No issues found \u2014 score: ${score.score}/100`);
     } else {
-      printAiPrompt(diagnostics, framework, score, totalFiles, {
-        maxIssues: parseInt(options.maxIssues, 10)
-      });
+      printAiPrompt(diagnostics, framework, score, totalFiles, { maxIssues });
     }
   } else {
-    printHeader(totalFiles, framework);
-    if (diagnostics.length > 0) {
-      printDiagnostics(diagnostics, framework, {
-        maxIssues: parseInt(options.maxIssues, 10),
-        compact: options.compact
-      });
+    const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+    if (isTTY && !options.compact && !options.watch && diagnostics.length > 0) {
+      printOverview(diagnostics, framework, score);
+      printSummary(score);
+      let action = await promptNextAction();
+      while (action !== "skip") {
+        process.stdout.write("\x1B[2J\x1B[3J\x1B[H");
+        if (action === "overview") {
+          printOverview(diagnostics, framework, score);
+          printSummary(score);
+        } else if (action === "fixes") {
+          printDiagnostics(diagnostics, framework, { maxIssues, compact: false });
+        } else if (action === "ai-prompt") {
+          printAiPromptTerminal(diagnostics, framework, score);
+        }
+        action = await promptNextAction();
+      }
+      process.stdin.pause();
     } else {
-      printNoIssues(totalFiles);
-    }
-    printSummary(score);
-    if (diagnostics.length > 0) {
-      printAiPromptInline(diagnostics, framework, score, totalFiles, {
-        maxIssues: parseInt(options.maxIssues, 10)
-      });
+      printHeader(totalFiles, framework);
+      if (diagnostics.length > 0) {
+        printCompactIssueList(diagnostics);
+      } else {
+        printNoIssues(totalFiles);
+      }
+      printSummary(score);
     }
   }
   if (options.watch) {

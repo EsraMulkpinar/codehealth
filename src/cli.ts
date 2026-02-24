@@ -1,12 +1,12 @@
 import { Command } from 'commander';
 import * as path from 'path';
 import { scan } from './scanner';
-import { printHeader, printDiagnostics, printSummary, printNoIssues, printAiPrompt, printAiPromptInline } from './reporter';
+import { printHeader, printDiagnostics, printSummary, printNoIssues, printAiPrompt, printCompactIssueList, printAiPromptTerminal, printOverview } from './reporter';
 import { computeScore } from './scorer';
 import { startWatch } from './watcher';
 import { ruleMap } from './rules';
 import { getRulesForFramework, FRAMEWORK_LABELS } from './profiles';
-import { promptFramework } from './prompt';
+import { promptFramework, promptNextAction } from './prompt';
 import type { Diagnostic, Framework } from './rules/types';
 
 const program = new Command();
@@ -82,30 +82,44 @@ program
 
     const score = computeScore(diagnostics, totalFiles);
 
+    const maxIssues = parseInt(options.maxIssues, 10);
+
     if (options.aiPrompt) {
       if (diagnostics.length === 0) {
         console.log(`# No issues found — score: ${score.score}/100`);
       } else {
-        printAiPrompt(diagnostics, framework, score, totalFiles, {
-          maxIssues: parseInt(options.maxIssues, 10),
-        });
+        printAiPrompt(diagnostics, framework, score, totalFiles, { maxIssues });
       }
     } else {
-      printHeader(totalFiles, framework);
-      if (diagnostics.length > 0) {
-        printDiagnostics(diagnostics, framework, {
-          maxIssues: parseInt(options.maxIssues, 10),
-          compact: options.compact,
-        });
-      } else {
-        printNoIssues(totalFiles);
-      }
-      printSummary(score);
+      const isTTY = process.stdin.isTTY && process.stdout.isTTY;
 
-      if (diagnostics.length > 0) {
-        printAiPromptInline(diagnostics, framework, score, totalFiles, {
-          maxIssues: parseInt(options.maxIssues, 10),
-        });
+      if (isTTY && !options.compact && !options.watch && diagnostics.length > 0) {
+        printOverview(diagnostics, framework, score);
+        printSummary(score);
+        let action = await promptNextAction();
+        while (action !== 'skip') {
+          process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+          if (action === 'overview') {
+            printOverview(diagnostics, framework, score);
+            printSummary(score);
+          } else if (action === 'fixes') {
+            printDiagnostics(diagnostics, framework, { maxIssues, compact: false });
+          } else if (action === 'ai-prompt') {
+            printAiPromptTerminal(diagnostics, framework, score);
+          }
+          action = await promptNextAction();
+        }
+        process.stdin.pause();
+      } else {
+        printHeader(totalFiles, framework);
+
+        if (diagnostics.length > 0) {
+          printCompactIssueList(diagnostics);
+        } else {
+          printNoIssues(totalFiles);
+        }
+
+        printSummary(score);
       }
     }
 

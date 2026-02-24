@@ -5,33 +5,21 @@ A fast, framework-aware React code scanner that tells you **exactly which compon
 Works completely standalone. No ESLint dependency. No config files needed.
 
 ```
-codehealth v0.1.0 · Next.js
-Scanning 104 files...
+codehealth  Next.js  ·  104 files scanned
 
-✗ useState() used without "use client" directive [missing-use-client]
-  Component: UserCard
-  src/components/UserCard.tsx:12:3
+── correctness ───────────────────────────── 2 ──
+ ✗  missing-use-client            2×
+    Client hook used without "use client" directive
 
-  10 │  import { useState } from 'react';
-  11 │
-▶ 12 │  const [open, setOpen] = useState(false);
-  13 │
+── best-practice ─────────────────────────── 3 ──
+ ⚠  index-as-key                  2×
+    Array index used as key — use a stable unique ID instead
+ ⚠  effect-set-state              1×
+    Multiple setState calls inside useEffect — consider useReducer
 
-  Fix:
-  ┌──────────────────────────────────────────────────
-  │ 'use client';
-  │
-  │ import { useState } from 'react';
-  └──────────────────────────────────────────────────
-
-┌───────────────────────────────────────────────┐
-│  codehealth                                   │
-│                                               │
-│  87 / 100  Great                              │
-│  ██████████████████████████████░░░░░░         │
-│                                               │
-│  ✗ 2 errors  ⚠ 11 warnings  in 8/104 files   │
-└───────────────────────────────────────────────┘
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  87 / 100  Great  😺  ·  ✗ 2  ·  ⚠ 3  ·  104 files
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
 ```
 
 ---
@@ -85,24 +73,37 @@ codehealth . --expo              # Expo (managed / bare)
 ### Examples
 
 ```bash
-# Scan current directory as a Next.js project
 codehealth . --next
-
-# Watch mode while you code
 codehealth . --next --watch
-
-# Only check for fetch() inside useEffect
 codehealth . --react --rule fetch-in-effect
-
-# Ignore generated files
 codehealth . --next --ignore "src/generated/**"
-
-# See which rules run for Expo
 codehealth . --list-rules --expo
-
-# Generate an AI prompt for refactoring assistance
 codehealth . --next --ai-prompt
 ```
+
+---
+
+## Interactive Mode
+
+In a TTY terminal, after the scan completes you get an interactive menu:
+
+```
+  What would you like to do?  (↑↓ arrow keys, Enter to confirm)
+
+  ❯ Overview & score
+    Detailed fixes
+    AI refactoring view
+    Exit
+```
+
+- **Overview & score** — category breakdown and score summary
+- **Detailed fixes** — full issue list with affected files, code context and copy-paste fixes
+- **AI refactoring view** — grouped output formatted for pasting into an AI assistant
+- **Exit** — quit the process
+
+The screen clears between views so output never accumulates.
+
+In non-TTY environments (CI, pipes, redirects) the interactive menu is skipped and output is printed directly.
 
 ---
 
@@ -118,7 +119,7 @@ For projects using Create React App, Vite, or any plain React setup.
 | `fetch-in-effect` | error | `fetch()` inside `useEffect` — use a data fetching library |
 | `multiple-usestate` | warning | 4+ `useState` calls — consider `useReducer` |
 | `large-component` | warning | Component over 300 lines — consider splitting |
-| `effect-set-state` | warning | 5+ `setState` calls inside one `useEffect` |
+| `effect-set-state` | warning | Multiple `setState` calls inside one `useEffect` |
 | `effect-as-handler` | warning | `useEffect` watching an event flag — move logic to the handler |
 | `index-as-key` | warning | `key={index}` in a list — use a stable unique ID |
 | `heavy-import` | warning | Heavy library without lazy loading (moment, lodash, etc.) |
@@ -126,6 +127,7 @@ For projects using Create React App, Vite, or any plain React setup.
 | `a11y-label` | warning | `<input>` / `<textarea>` with no accessible label |
 | `a11y-interactive` | warning | Clickable element with no keyboard listener |
 | `a11y-role` | warning | Element with event handler but no ARIA role |
+| `no-console-log` | warning | `console` statement in production code |
 
 ### `--next`
 Everything in `--react`, plus Next.js App Router specific rules.
@@ -142,7 +144,6 @@ Core React rules adapted for mobile, plus React Native specific checks. Web a11y
 | Rule | Severity | Description |
 |------|----------|-------------|
 | `inline-styles` | warning | `style={{ }}` inline object — use `StyleSheet.create()` |
-| `no-console-log` | warning | `console.log` left in production code |
 | `flatlist-for-lists` | warning | `.map()` inside `<ScrollView>` — use `<FlatList>` |
 | `rn-accessibility` | warning | `<Pressable>` / `<TouchableOpacity>` with no `accessibilityLabel` |
 
@@ -163,13 +164,12 @@ Every scan produces a score from 0 to 100.
 100 - (errors × 5) - (warnings × 1)
 ```
 
-| Score | Label |
-|-------|-------|
-| 90–100 | Excellent |
-| 75–89 | Great |
-| 60–74 | Good |
-| 40–59 | Fair |
-| 0–39 | Needs work |
+| Score | Label | |
+|-------|-------|-|
+| 90–100 | Excellent | 😸 |
+| 75–89 | Great | 😺 |
+| 50–74 | Needs work | 😾 |
+| 0–49 | Needs work | 🙀 |
 
 The process exits with code `1` if any errors are found, making it easy to use in CI.
 
@@ -188,7 +188,6 @@ Uses [chokidar](https://github.com/paulmillr/chokidar) to watch `.ts`, `.tsx`, `
 ## CI Usage
 
 ```yaml
-# GitHub Actions example
 - name: Run codehealth
   run: npx codehealth . --next
 ```
@@ -208,7 +207,7 @@ const { diagnostics, totalFiles } = await scan({
 });
 
 for (const d of diagnostics) {
-  console.log(`${d.component} — ${d.message} (${d.filePath}:${d.line})`);
+  console.log(`${d.ruleId} — ${d.message} (${d.filePath}:${d.line})`);
 }
 ```
 
@@ -219,12 +218,12 @@ interface Diagnostic {
   ruleId: string;
   severity: 'error' | 'warning';
   message: string;
-  component: string;      // e.g. "UserList"
   filePath: string;
   line: number;
   column: number;
-  codeSnippet: string[];  // 5 lines of context around the issue
-  fix: string;            // copy-paste ready fix snippet
+  codeSnippet: string[];
+  fix: string;
+  suggestions: string[];
 }
 
 type Framework = 'react' | 'next' | 'react-native' | 'expo';
@@ -238,8 +237,5 @@ type Framework = 'react' | 'next' | 'react-native' | 'expo';
 2. **Parse** — builds an AST using [`@typescript-eslint/typescript-estree`](https://typescript-eslint.io/) with JSX support
 3. **Parent refs** — injects `node.parent` on every AST node so rules can walk up the tree
 4. **Rules** — each rule traverses the AST, finds matching patterns, and returns `Diagnostic[]`
-5. **Component detection** — walks up the parent chain to find the nearest PascalCase function name
-6. **Report** — prints colored output with code snippets and fix suggestions
-
----
-
+5. **Score** — calculates a 0–100 health score weighted by severity
+6. **Report** — prints colored output with code snippets, fix suggestions and an interactive menu
