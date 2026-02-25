@@ -1,6 +1,6 @@
 {
   "name": "codehealth",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Framework-aware React code scanner with precise diagnostics and copy-paste fix snippets",
   "bin": {
     "codehealth": "./dist/cli.js"

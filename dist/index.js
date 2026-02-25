@@ -874,6 +874,11 @@ var rule11 = {
     const diagnostics = [];
     traverse(ast, (node) => {
       if (node.type === "ImportDeclaration") {
+        if (node.importKind === "type") return;
+        const hasRuntimeSpecifier = node.specifiers.length === 0 || node.specifiers.some(
+          (specifier) => specifier.type === "ImportSpecifier" ? specifier.importKind !== "type" : true
+        );
+        if (!hasRuntimeSpecifier) return;
         const source = node.source.value;
         const suggestion = HEAVY_LIBS[source];
         if (!suggestion) return;
