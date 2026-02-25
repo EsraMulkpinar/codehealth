@@ -36,6 +36,14 @@ const rule: Rule = {
 
     traverse(ast, (node) => {
       if (node.type === 'ImportDeclaration') {
+        if (node.importKind === 'type') return;
+        const hasRuntimeSpecifier =
+          node.specifiers.length === 0 ||
+          node.specifiers.some((specifier) =>
+            specifier.type === 'ImportSpecifier' ? specifier.importKind !== 'type' : true,
+          );
+        if (!hasRuntimeSpecifier) return;
+
         const source = node.source.value as string;
         const suggestion = HEAVY_LIBS[source];
         if (!suggestion) return;
