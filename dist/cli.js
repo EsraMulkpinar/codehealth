@@ -1923,7 +1923,6 @@ function printSummary(result) {
   const fileStr = import_picocolors.default.dim(`in ${affectedFiles}/${totalFiles} files`);
   const border = "\u2500".repeat(BOX_WIDTH);
   const pad = (s, target) => s + " ".repeat(Math.max(0, target - stripAnsi(s).length));
-  const scoreLine = `  ${scoreColor(import_picocolors.default.bold(`${score} / 100`))}  ${import_picocolors.default.dim(label)}`;
   const statsLine = `  ${errStr}   ${warnStr}   ${fileStr}`;
   const cats = ["correctness", "performance", "best-practice", "accessibility"];
   const catEntries = cats.map((cat) => {

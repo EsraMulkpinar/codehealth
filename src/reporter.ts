@@ -428,7 +428,6 @@ export function printSummary(result: ScoreResult): void {
   const pad = (s: string, target: number) =>
     s + ' '.repeat(Math.max(0, target - stripAnsi(s).length));
 
-  const scoreLine = `  ${scoreColor(pc.bold(`${score} / 100`))}  ${pc.dim(label)}`;
   const statsLine = `  ${errStr}   ${warnStr}   ${fileStr}`;
 
   const cats: Category[] = ['correctness', 'performance', 'best-practice', 'accessibility'];
