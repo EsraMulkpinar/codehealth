@@ -1,4 +1,3 @@
-import type { TSESTree } from '@typescript-eslint/typescript-estree';
 import { getCodeSnippet } from '../component-detector';
 import { traverse } from '../traverse';
 import type { Diagnostic, Rule } from './types';

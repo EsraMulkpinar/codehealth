@@ -4,7 +4,6 @@ import { parseFile, isParseFailure } from './parser';
 import { allRules, ruleMap } from './rules';
 import { getRulesForFramework } from './profiles';
 import type { Diagnostic, Framework } from './rules/types';
-import { getCodeSnippet } from './component-detector';
 
 const GLOB_PATTERNS = ['**/*.tsx', '**/*.ts', '**/*.jsx', '**/*.js'];
 const IGNORE_PATTERNS = [

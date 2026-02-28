@@ -12,6 +12,7 @@ function isComponentWrappedInSuspense(ast: TSESTree.Program, componentName: stri
       node.name.name === componentName
     ) {
       let insideSuspense = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let cur = (node as any).parent;
       while (cur) {
         if (
