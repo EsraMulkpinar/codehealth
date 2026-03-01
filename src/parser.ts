@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 import { parse, simpleTraverse } from '@typescript-eslint/typescript-estree';
 import type { TSESTree } from '@typescript-eslint/typescript-estree';
 import * as fs from 'fs';
@@ -24,12 +26,16 @@ export function parseFile(filePath: string): ParseResult | ParseFailure | null {
     const source = fs.readFileSync(filePath, 'utf-8');
     const sourceLines = source.split('\n');
 
+    const ext = path.extname(filePath);
+    const isJsx = ext === '.tsx' || ext === '.jsx';
+
     const ast = parse(source, {
-      jsx: true,
+      jsx: isJsx,
       loc: true,
       range: true,
       comment: false,
       tokens: false,
+      filePath,
     });
 
     addParentRefs(ast);
